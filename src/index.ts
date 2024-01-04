@@ -108,7 +108,6 @@ export class igApi {
 			}
 			
 			this.options = options;
-			console.log(this.options);
 
 			return axios(`${baseURL}${url}`, options);
 
