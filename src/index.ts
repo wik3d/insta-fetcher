@@ -86,8 +86,6 @@ export class igApi {
 				...this.fetchOptions,
 			};
 
-			console.log(options);
-
 			return fetch(`${baseURL}${url}`, options);
 
 		}
