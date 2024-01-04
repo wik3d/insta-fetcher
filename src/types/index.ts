@@ -1,15 +1,15 @@
-export * from './HighlightMediaMetadata'
-export * from './HighlightMetadata'
-export * from './MediaConfigureOptions'
-export * from './PostFeedResult'
-export * from './PostMetadata'
-export * from './PostModels'
-export * from './PostStoryResult'
-export * from './StoriesMetadata'
-export * from './UserGraphQlV2'
-export * from './UserMetadata'
-export * from './PaginatedPosts'
-export * from './LoginData'
+export * from './HighlightMediaMetadata';
+export * from './HighlightMetadata';
+export * from './MediaConfigureOptions';
+export * from './PostFeedResult';
+export * from './PostMetadata';
+export * from './PostModels';
+export * from './PostStoryResult';
+export * from './StoriesMetadata';
+export * from './UserGraphQlV2';
+export * from './UserMetadata';
+export * from './PaginatedPosts';
+export * from './LoginData';
 
 /** instagram username */
 export type username = string;
@@ -37,9 +37,9 @@ export enum ProductType {
 }
 
 export enum Typename {
-	GraphImage = "GraphImage",
-	GraphSidecar = "GraphSidecar",
-	GraphVideo = "GraphVideo",
+	GraphImage = 'GraphImage',
+	GraphSidecar = 'GraphSidecar',
+	GraphVideo = 'GraphVideo',
 }
 
 export enum IGPostType {
