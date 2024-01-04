@@ -21,7 +21,7 @@ export interface ItemStories {
 	/** a timestamp of expire stories */
 	expiring_at: number;
 	/** stories media id */
-	id: number;
+	id: string;
 	/** media pixels weight */
 	original_width: number;
 	/** media pixels height */
