@@ -12,7 +12,7 @@ const proxyConfig = {
 	},
 };
 
-const ig = new igApi(cookie, proxyConfig);
+const ig = new igApi(cookie, false, {}, proxyConfig);
 
 (async () => {
 	const url = 'randomInstaPost';
