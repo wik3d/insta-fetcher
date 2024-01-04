@@ -35,7 +35,7 @@ export const shortcodeFromMediaID = (media_id: string) => {
 };
 
 /** Instagram post regex */
-const IGPostRegex = /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com\/(?:p|reel|tv)\/[\w-]+|(?:stories|instagram\.com)\/[\w-]+\/(?:\d+|p\/[\w-]+))(?:\/)?(\?.*)?$/gim;
+export const IGPostRegex = /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com\/(?:p|reel|tv)\/[\w-]+|(?:stories|instagram\.com)\/[\w-]+\/(?:\d+|p\/[\w-]+))(?:\/)?(\?.*)?$/gim;
 
 /**
  * format instagram long url to get shortcode
