@@ -29,7 +29,7 @@ export interface ItemStories {
 	/** has audio */
 	has_audio: boolean;
 	/** video duration */
-	video_duration: number;
+	video_duration: number | null;
 	/** stories caption */
 	caption: string;
 }

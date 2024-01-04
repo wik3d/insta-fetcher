@@ -323,11 +323,11 @@ export class igApi {
 					url: currentItem.image_versions2.candidates[0].url,
 					taken_at: currentItem.taken_at,
 					expiring_at: currentItem.expiring_at,
-					id: Number(currentItem.id),
+					id: parseInt(currentItem.id),
 					original_width: currentItem.original_width,
 					original_height: currentItem.original_height,
 					has_audio: currentItem.has_audio !== undefined ? currentItem.has_audio : false,
-					video_duration: Number(currentItem.video_duration !== undefined ? currentItem.video_duration : null),
+					video_duration: currentItem.video_duration !== undefined ? currentItem.video_duration : null,
 					caption: currentItem.caption as unknown as string,
 				});
 			}
@@ -338,7 +338,7 @@ export class igApi {
 					url: currentItem.video_versions[0].url,
 					taken_at: currentItem.taken_at,
 					expiring_at: currentItem.expiring_at,
-					id: Number(currentItem.id),
+					id: parseInt(currentItem.id),
 					original_width: currentItem.original_width,
 					original_height: currentItem.original_height,
 					has_audio: currentItem.has_audio !== undefined ? currentItem.has_audio : false,
