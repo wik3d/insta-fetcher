@@ -7,9 +7,11 @@
 
 import fs, { PathLike } from 'fs';
 import FormData from 'form-data';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { bufferToStream, getPostType, parseCookie, randInt, shortcodeFormatter } from './utils/index';
 import { username, userId, seachTerm, url, IgCookie, ProductType, MediaType, IChangedProfilePicture } from './types';
 import { IGUserMetadata, UserGraphQL } from './types/UserMetadata';
+import { CookieHandler } from './helper/CookieHandler';
 import { IGStoriesMetadata, ItemStories, StoriesGraphQL } from './types/StoriesMetadata';
 import { highlight_ids_query, highlight_media_query } from './helper/query';
 import { HightlighGraphQL, ReelsIds } from './types/HighlightMetadata';
@@ -22,29 +24,46 @@ import { PostStoryResult } from './types/PostStoryResult';
 import { MediaConfigureOptions } from './types/MediaConfigureOptions';
 import { GraphqlUser, UserGraphQLV2 } from './types/UserGraphQlV2';
 import { IPaginatedPosts } from './types/PaginatedPosts';
-import { URL } from 'url';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+
+type proxyType = { protocol: string, host: string, port: number, auth?: { username: string, password: string } };
 
 export * from './utils';
 export * as InstagramMetadata from './types';
 export * from './helper/Session';
 export class igApi {
+	public options = {};
+	public proxyAgent;
+
 	/**
 	 * Recommended to set cookie for most all IG Request
 	 * @param IgCookie cookie you can get it by using getSessionId function, see README.md or example file
 	 * @param storeCookie
 	 * @param fetchOptions
 	 */
-	constructor(private IgCookie: IgCookie = '', public fetchOptions = {}) {
+	constructor(private IgCookie: IgCookie = '', public storeCookie: boolean = true, public fetchOptions = {}, public proxy: proxyType) {
 		this.IgCookie = IgCookie;
 		this.fetchOptions = fetchOptions;
+
+		if (this.storeCookie) {
+			this.setCookie(this.IgCookie);
+		}
+
+		if (proxy) {
+			this.proxy = proxy;
+			const proxyAgent = new HttpsProxyAgent(
+				`${this.proxy.protocol}://${Object.keys(this.proxy.auth || {}).length > 0 ? `${this.proxy.auth?.username}:${this.proxy.auth?.password}` : ''}@${this.proxy.host}:${this.proxy.port}`,
+			);
+			this.proxyAgent = proxyAgent;
+		}
 	}
+	private cookie = new CookieHandler(this.IgCookie);
 	private accountUserId = this.IgCookie.match(/sessionid=(.*?);/)?.[1].split('%')[0] || '';
 
 	private buildHeaders = (agent: string = config.android, options?: any) => {
 		return {
 			'user-agent': agent,
-			'cookie': `${this.IgCookie}`,
+			'cookie': `${this.storeCookie && this.cookie.get() || this.IgCookie}`,
 			'authority': 'www.instagram.com',
 			'content-type': 'application/x-www-form-urlencoded',
 			'origin': 'https://www.instagram.com',
@@ -71,23 +90,46 @@ export class igApi {
 		baseURL: string,
 		url = '',
 		agent: string = config.android,
-		fetchOptions: RequestInit = {},
-	): Promise<Response> | undefined => {
+		fetchOptions: AxiosRequestConfig = {},
+	): Promise<AxiosResponse> | undefined => {
 		// eslint-disable-next-line no-useless-catch
 		try {
 			const headers = fetchOptions.headers
 				? fetchOptions.headers
 				: this.buildHeaders(agent);
 
-			const options: RequestInit = {
+			const options: AxiosRequestConfig = {
 				method: fetchOptions.method || 'GET',
-				headers: headers,
-				...fetchOptions,
-				...this.fetchOptions,
+				headers,
 			};
 
-			return fetch(`${baseURL}${url}`, options);
+			if (this.proxyAgent) {
+				options.httpsAgent = this.proxyAgent;
+			}
+			
+			this.options = options;
+			console.log(this.options);
 
+			return axios(`${baseURL}${url}`, options);
+
+		}
+		catch (error) {
+			throw error;
+		}
+	};
+
+	/**
+	 * Set cookie for most all IG Request
+	 * @param {IgCookie} IgCookie
+	 */
+	private setCookie = (IgCookie: IgCookie = this.IgCookie) => {
+		try {
+			if (!this.cookie.check()) {
+				this.cookie.save(IgCookie);
+			}
+			else {
+				this.cookie.update(IgCookie);
+			}
 		}
 		catch (error) {
 			throw error;
@@ -104,7 +146,7 @@ export class igApi {
 			config.instagram_base_url,
 			`/${username}/?__a=1&__d=dis`,
 			config.iPhone,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 		return res?.graphql.user.id || res;
 	};
 
@@ -113,7 +155,7 @@ export class igApi {
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/followers/?count=12&query=${seachTerm}&search_surface=follow_list_page`,
 			config.iPhone,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 		return res;
 	};
 
@@ -122,7 +164,7 @@ export class igApi {
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/following/?query=${seachTerm}`,
 			config.iPhone,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 		return res;
 	};
 
@@ -182,13 +224,23 @@ export class igApi {
 		const post = shortcodeFormatter(url);
 
 		// const req = (await IGFetchDesktop.get(`/${post.type}/${post.shortcode}/?__a=1`))
-		const res = await this.FetchIGAPI(
+		const response = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/${post.type}/${post.shortcode}/?__a=1&__d=dis`,
 			config.desktop,
-		)?.then(res => res.json());
+		)?.then(res => {
+			return res.data;
+		}).catch(error => {
+			console.log(error);
+			if (error.request._isRedirect) {
+				return axios.request({
+					...this.options,
+					url: error.request._options.path,
+				});
+			}
+		});
 
-		const metadata: IRawBody = res;
+		const metadata: IRawBody = response;
 		const item = metadata.items[0];
 		return {
 			username: item.user.username,
@@ -214,7 +266,7 @@ export class igApi {
 			const res = await this.FetchIGAPI(
 				config.instagram_api_v1,
 				`/media/${mediaId.toString()}/info/`,
-			)?.then(res => res.json());
+			)?.then(res => res.data);
 			return res;
 		}
 		catch (error) {
@@ -232,7 +284,7 @@ export class igApi {
 			const res = await this.FetchIGAPI(
 				config.instagram_api_v1,
 				`/users/${userID}/info/`,
-			)?.then(res => res.json());
+			)?.then(res => res.data);
 			const graphql: UserGraphQL = res;
 			return graphql;
 		}
@@ -252,7 +304,7 @@ export class igApi {
 		const res = await this.FetchIGAPI(
 			config.instagram_api_v1,
 			`/users/${userID}/info/`,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 		const graphql: UserGraphQL = res;
 		const isSet: boolean = typeof graphql.user.full_name !== 'undefined';
 		if (!simplifiedMetadata) {
@@ -289,7 +341,7 @@ export class igApi {
 	 * @returns
 	 */
 	public fetchUserV2 = async (username: username) => {
-		const res = await this.FetchIGAPI(config.instagram_base_url, `/${username}/?__a=1&__d=dis`)?.then(res => res.json());
+		const res = await this.FetchIGAPI(config.instagram_base_url, `/${username}/?__a=1&__d=dis`)?.then(res => res.data);
 		const { graphql }: UserGraphQLV2 = res;
 		return graphql.user as GraphqlUser;
 	};
@@ -362,7 +414,7 @@ export class igApi {
 			config.instagram_api_v1,
 			`/feed/user/${userID}/reel_media/`,
 			config.iPhone,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 		const graphql: StoriesGraphQL = res;
 		const isFollowing = typeof graphql.user?.friendship_status !== 'undefined';
 
@@ -395,7 +447,7 @@ export class igApi {
 			config.instagram_base_url,
 			'/graphql/query/?' + queryString,
 			config.iPhone,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 		const graphql: HightlighGraphQL = res;
 		const items: ReelsIds[] | PromiseLike<ReelsIds[]> = [];
 		graphql.data.user.edge_highlight_reels.edges.map((edge) => {
@@ -423,7 +475,7 @@ export class igApi {
 			url,
 			'',
 			config.iPhone,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 		const graphql: HMedia = res;
 		const result: ReelsMediaData[] = graphql.data.reels_media[0].items.map((item) => ({
 			media_id: item.id,
@@ -492,7 +544,7 @@ export class igApi {
 			url,
 			'',
 			config.android,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 	
 		return res?.data.user.edge_owner_to_timeline_media;
 	};
@@ -522,69 +574,67 @@ export class igApi {
 			url,
 			'',
 			config.android,
-		)?.then(res => res.json());
+		)?.then(res => res.data);
 			
 		return res?.data.user.edge_owner_to_timeline_media;
 	};
 
-	//   private async uploadPhoto(photo: string | number | Buffer | URL) {
-	// 	const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-	// 	try {
-	// 	  const uploadId = Date.now();
-	
-	// 	  const file = Buffer.isBuffer(photo)
-	// 		? photo
-	// 		: fs.existsSync(photo as PathLike)
-	// 		? fs.readFileSync(photo)
-	// 		: photo;
-	
-	// 	  const uploadParams = {
-	// 		media_type: 1,
-	// 		upload_id: uploadId.toString(),
-	// 		upload_media_height: 1080,
-	// 		upload_media_width: 1080,
-	// 		xsharing_user_ids: JSON.stringify([]),
-	// 		image_compression: JSON.stringify({
-	// 		  lib_name: 'moz',
-	// 		  lib_version: '3.1.m',
-	// 		  quality: '80',
-	// 		}),
-	// 	  };
-	
-	// 	  const nameEntity = `${uploadId}_0_${randInt(1000000000, 9999999999)}`;
-	
-	// 	  const headers = {
-	// 		'x-entity-type': 'image/jpeg',
-	// 		offset: 0,
-	// 		'x-entity-name': nameEntity,
-	// 		'x-instagram-rupload-params': JSON.stringify(uploadParams),
-	// 		'x-entity-length': Buffer.byteLength(file),
-	// 		'Content-Length': Buffer.byteLength(file),
-	// 		'Content-Type': 'application/octet-stream',
-	// 		'x-ig-app-id': '1217981644879628',
-	// 		'Accept-Encoding': 'gzip',
-	// 		'X-Pigeon-Rawclienttime': (Date.now() / 1000).toFixed(3),
-	// 		'X-IG-Connection-Speed': `${randInt(3700, 1000)}kbps`,
-	// 		'X-IG-Bandwidth-Speed-KBPS': '-1.000',
-	// 		'X-IG-Bandwidth-TotalBytes-B': '0',
-	// 		'X-IG-Bandwidth-TotalTime-MS': '0',
-	// 	  };
-	
-	// 	  const url = `${config.instagram_base_url}/rupload_igphoto/fb_uploader_${nameEntity}`;
-	// 	  const body = file;
-	
-	// 	  const response = await fetch(url, {
-	// 		method: 'POST',
-	// 		headers,
-	// 		body,
-	// 	  });
-	
-	// 	  const result = await response.json();
-	// 	  return result;
-	// 	} catch (error) {
-	// 	  throw error;
-	// 	}
-	//   };
+	private uploadPhoto = async (photo: string | Buffer) => {
+		try {
+			const uploadId = Date.now();
+
+			const file = Buffer.isBuffer(photo)
+				? photo
+				: fs.existsSync(photo)
+					? fs.readFileSync(photo)
+					: photo;
+
+			const uploadParams = {
+				media_type: 1,
+				upload_id: uploadId.toString(),
+				upload_media_height: 1080,
+				upload_media_width: 1080,
+				xsharing_user_ids: JSON.stringify([]),
+				image_compression: JSON.stringify({
+					lib_name: 'moz',
+					lib_version: '3.1.m',
+					quality: '80',
+				}),
+			};
+
+			const nameEntity = `${uploadId}_0_${randInt(1000000000, 9999999999)}`;
+
+			const headers = {
+				'x-entity-type': 'image/jpeg',
+				offset: 0,
+				'x-entity-name': nameEntity,
+				'x-instagram-rupload-params': JSON.stringify(uploadParams),
+				'x-entity-length': Buffer.byteLength(file),
+				'Content-Length': Buffer.byteLength(file),
+				'Content-Type': 'application/octet-stream',
+				'x-ig-app-id': '1217981644879628',
+				'Accept-Encoding': 'gzip',
+				'X-Pigeon-Rawclienttime': (Date.now() / 1000).toFixed(3),
+				'X-IG-Connection-Speed': `${randInt(3700, 1000)}kbps`,
+				'X-IG-Bandwidth-Speed-KBPS': '-1.000',
+				'X-IG-Bandwidth-TotalBytes-B': '0',
+				'X-IG-Bandwidth-TotalTime-MS': '0',
+			};
+
+			const headersPhoto = this.buildHeaders(config.android, headers);
+
+			const result = await this.FetchIGAPI(
+				`${config.instagram_base_url}`,
+				`/rupload_igphoto/fb_uploader_${nameEntity}`,
+				config.android,
+				{ headers: headersPhoto, data: file, method: 'POST' },
+			);
+			return result?.data;
+		}
+		catch (error) {
+			throw error;
+		}
+	};
 
 	/**
 	 * Post a photo to instagram
@@ -593,87 +643,88 @@ export class igApi {
 	 * @param options
 	 * @returns
 	 */
-	// 	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<PostFeedResult | PostStoryResult> => {
-	// 		try {
-	// 			const dateObj = new Date();
-	// 			const now = dateObj
-	// 				.toISOString()
-	// 				.replace(/T/, ' ')
-	// 				.replace(/\..+/, ' ');
-	// 			const offset = dateObj.getTimezoneOffset();
+	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<PostFeedResult | PostStoryResult> => {
+		if (!this.IgCookie) throw new Error('set cookie first to use this function');
+		try {
+			const dateObj = new Date();
+			const now = dateObj
+				.toISOString()
+				.replace(/T/, ' ')
+				.replace(/\..+/, ' ');
+			const offset = dateObj.getTimezoneOffset();
 
-	// 			const responseUpload = await this.uploadPhoto(photo);
+			const responseUpload = await this.uploadPhoto(photo);
 
-	// 			const payloadForm = {
-	// 				upload_id: responseUpload.upload_id,
-	// 				timezone_offset: offset,
-	// 				date_time_original: now,
-	// 				date_time_digitalized: now,
-	// 				source_type: '4',
-	// 				// edits: {
-	// 				//     crop_original_size: [1080, 1080],
-	// 				//     crop_center: [0.0, -0.0],
-	// 				//     crop_zoom: 1.0
-	// 				// },
-	// 				...options,
-	// 			};
+			const payloadForm = {
+				upload_id: responseUpload.upload_id,
+				timezone_offset: offset,
+				date_time_original: now,
+				date_time_digitalized: now,
+				source_type: '4',
+				// edits: {
+				//     crop_original_size: [1080, 1080],
+				//     crop_center: [0.0, -0.0],
+				//     crop_zoom: 1.0
+				// },
+				...options,
+			};
 
-	// 			const headers = {
-	// 				'authority': 'www.instagram.com',
-	// 				'x-ig-www-claim': 'hmac.AR2-43UfYbG2ZZLxh-BQ8N0rqGa-hESkcmxat2RqMAXejXE3',
-	// 				'x-instagram-ajax': 'adb961e446b7-hot',
-	// 				'content-type': 'application/x-www-form-urlencoded',
-	// 				'accept': '*/*',
-	// 				'user-agent': config.desktop,
-	// 				'x-requested-with': 'XMLHttpRequest',
-	// 				'x-csrftoken': parseCookie(this.IgCookie).csrftoken,
-	// 				'x-ig-app-id': '1217981644879628',
-	// 				'origin': 'https://www.instagram.com',
-	// 				'sec-fetch-site': 'same-origin',
-	// 				'sec-fetch-mode': 'cors',
-	// 				'sec-fetch-dest': 'empty',
-	// 				'referer': 'https://www.instagram.com/',
-	// 				'accept-language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-	// 				'cookie': `${this.IgCookie}`,
-	// 			};
+			const headers = {
+				'authority': 'www.instagram.com',
+				'x-ig-www-claim': 'hmac.AR2-43UfYbG2ZZLxh-BQ8N0rqGa-hESkcmxat2RqMAXejXE3',
+				'x-instagram-ajax': 'adb961e446b7-hot',
+				'content-type': 'application/x-www-form-urlencoded',
+				'accept': '*/*',
+				'user-agent': config.desktop,
+				'x-requested-with': 'XMLHttpRequest',
+				'x-csrftoken': parseCookie(this.IgCookie).csrftoken,
+				'x-ig-app-id': '1217981644879628',
+				'origin': 'https://www.instagram.com',
+				'sec-fetch-site': 'same-origin',
+				'sec-fetch-mode': 'cors',
+				'sec-fetch-dest': 'empty',
+				'referer': 'https://www.instagram.com/',
+				'accept-language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+				'cookie': `${this.storeCookie && this.cookie.get() || this.IgCookie}`,
+			};
 
-	// 			const result = await this.FetchIGAPI(
-	// 				`${config.instagram_api_v1}`,
-	// 				`/media/${type === 'feed' ? 'configure/' : 'configure_to_story/'}`,
-	// 				config.android,
-	// 				{ data: new URLSearchParams(Object.entries(payloadForm)).toString(), method: 'POST', headers: headers },
-	// 			)?.then(res => res.json());
+			const result = await this.FetchIGAPI(
+				`${config.instagram_api_v1}`,
+				`/media/${type === 'feed' ? 'configure/' : 'configure_to_story/'}`,
+				config.android,
+				{ data: new URLSearchParams(Object.entries(payloadForm)).toString(), method: 'POST', headers: headers },
+			);
 
-	// 			return result;
-	// 		}
-	// 		catch (error) {
-	// 			throw error;
-	// 		}
-	// 	};
+			return result?.data;
+		}
+		catch (error) {
+			throw error;
+		}
+	};
 
-	// 	/**
-	// 	 *
-	// 	 * @param photo input must be filepath or buffer
-	// 	 */
-	// 	public changeProfilePicture = async (photo: string | Buffer): Promise<IChangedProfilePicture> => {
-	// 		const media = Buffer.isBuffer(photo) ? bufferToStream(photo) : fs.createReadStream(photo);
+	/**
+	*
+	* @param photo input must be filepath or buffer
+	*/
+	public changeProfilePicture = async (photo: string | Buffer): Promise<IChangedProfilePicture> => {
+		const media = Buffer.isBuffer(photo) ? bufferToStream(photo) : fs.createReadStream(photo);
 
-	// 		const form = new FormData();
-	// 		form.append('profile_pic', media, 'profilepic.jpg');
+		const form = new FormData();
+		form.append('profile_pic', media, 'profilepic.jpg');
 
-	// 		const headers = this.buildHeaders(
-	// 			config.desktop,
-	// 			{
-	// 				'X-CSRFToken': await getCsrfToken(),
-	// 				...form.getHeaders(),
-	// 			},
-	// 		);
-	// 		const result = await this.FetchIGAPI(config.instagram_base_url, '/accounts/web_change_profile_picture/', config.desktop, {
-	// 			method: 'post',
-	// 			data: form,
-	// 			headers,
-	// 		})?.then(res => res.json());
+		const headers = this.buildHeaders(
+			config.desktop,
+			{
+				'X-CSRFToken': await getCsrfToken(),
+				...form.getHeaders(),
+			},
+		);
+		const result = await this.FetchIGAPI(config.instagram_base_url, '/accounts/web_change_profile_picture/', config.desktop, {
+			method: 'post',
+			data: form,
+			headers,
+		});
 
-// 		return result;
-// 	};
+		return result?.data;
+	};
 }

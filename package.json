@@ -43,7 +43,7 @@
   "dependencies": {
     "@typescript-eslint/eslint-plugin": "^5.51.0",
     "@typescript-eslint/parser": "^5.51.0",
-    "axios": "^0.27.2",
+    "axios": "^1.6.4",
     "big-integer": "^1.6.51",
     "eslint": "^8.51.0",
     "form-data": "^4.0.0",
