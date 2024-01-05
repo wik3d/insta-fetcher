@@ -111,10 +111,12 @@ export class igApi {
 			this.options = options;
 	
 			const res: { newSession: any, response: AxiosResponse } = await axios(`${baseURL}${url}`, options)
-				.then((res) => ({
-					newSession: { status: false },
-					response: res,
-				}))
+				.then((res) => {
+					return {
+						newSession: { status: false },
+						response: res,
+					};
+				})
 				.catch(async (error) => {
 					if (error.response && error.response.status === 401 && this.auth) {
 						console.log('getting new session cookie...');
@@ -288,16 +290,11 @@ export class igApi {
 		const post = shortcodeFormatter(url);
 
 		// const req = (await IGFetchDesktop.get(`/${post.type}/${post.shortcode}/?__a=1`))
-		const response = await this.FetchIGAPI(
+		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/${post.type}/${post.shortcode}/?__a=1&__d=dis`,
 			config.desktop,
-		)?.then(res => {
-			return {
-				newSession: res.newSession,
-				data: res.response?.data,
-			};
-		}).catch(error => {
+		).catch(error => {
 			console.log(error);
 			if (error.request._isRedirect) {
 				return axios.request({
@@ -307,10 +304,12 @@ export class igApi {
 			}
 		});
 
-		const metadata: IRawBody = response?.data;
+		console.log(res);
+
+		const metadata: IRawBody = (res as any)?.response?.data;
 		const item = metadata.items[0];
 		return {
-			newSession: (response as any).newSession,
+			newSession: (res as any).newSession,
 			data: {
 				username: item.user.username,
 				name: item.user.full_name,
