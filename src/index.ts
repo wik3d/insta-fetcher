@@ -22,11 +22,11 @@ import { getCsrfToken } from './helper/Session';
 import { PostFeedResult } from './types/PostFeedResult';
 import { PostStoryResult } from './types/PostStoryResult';
 import { MediaConfigureOptions } from './types/MediaConfigureOptions';
-import { GraphqlUser, UserGraphQLV2 } from './types/UserGraphQlV2';
+import { GraphqlUser } from './types/UserGraphQlV2';
 import { IPaginatedPosts } from './types/PaginatedPosts';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getCookie } from './helper/Session';
-import { proxyType, authType } from './types/LoginData';
+import { proxyType, authType, newSessionType, MainResponse } from './types/LoginData';
 
 export * from './utils';
 export * as InstagramMetadata from './types';
@@ -95,7 +95,7 @@ export class igApi {
 		url = '',
 		agent = 'config.android',
 		fetchOptions: AxiosRequestConfig = {},
-	): Promise<{ newSession: any, response: AxiosResponse | undefined }> => {
+	): Promise<{ newSession: newSessionType, response: AxiosResponse | undefined }> => {
 		try {
 			const headers = fetchOptions.headers || this.buildHeaders(agent);
 
@@ -110,7 +110,7 @@ export class igApi {
 	
 			this.options = options;
 	
-			const res: { newSession: any, response: AxiosResponse } = await axios(`${baseURL}${url}`, options)
+			const res: MainResponse = await axios(`${baseURL}${url}`, options)
 				.then(async (res) => {
 					if (!res?.data?.items?.length && this.auth) {
 						console.log('getting new session cookie...');
@@ -164,7 +164,7 @@ export class igApi {
 		}
 		catch(e) {
 			console.log(e);
-			return { newSession: false, response: undefined };
+			return { newSession: { status: false }, response: undefined };
 		}
 	};
 	
@@ -210,7 +210,7 @@ export class igApi {
 	 * @param {username} username
 	 * @returns
 	 */
-	public getIdByUsername = async (username: username): Promise<{ newSession: any, data: string }> => {
+	public getIdByUsername = async (username: username): Promise<{ newSession: newSessionType, data: string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/${username}/?__a=1&__d=dis`,
@@ -223,7 +223,7 @@ export class igApi {
 		};
 	};
 
-	public searchFollower = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: any, data: string }> => {
+	public searchFollower = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: newSessionType, data: string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/followers/?count=12&query=${seachTerm}&search_surface=follow_list_page`,
@@ -236,7 +236,7 @@ export class igApi {
 		};
 	};
 
-	public searchFollowing = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: any, data: string }> => {
+	public searchFollowing = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: newSessionType, data: string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/following/?query=${seachTerm}`,
@@ -301,7 +301,7 @@ export class igApi {
 		return urls;
 	};
 
-	public fetchPost = async (url: url): Promise<{ newSession: any, data: IPostModels }> => {
+	public fetchPost = async (url: url): Promise<{ newSession: newSessionType, data: IPostModels }> => {
 		const post = shortcodeFormatter(url);
 
 		// const req = (await IGFetchDesktop.get(`/${post.type}/${post.shortcode}/?__a=1`))
@@ -343,7 +343,7 @@ export class igApi {
 
 	public fetchPostByMediaId = async (
 		mediaId: string | number,
-	): Promise<any> => {
+	): Promise<{ newSession: newSessionType, data: AxiosResponse }> => {
 		try {
 			const res = await this.FetchIGAPI(
 				config.instagram_api_v1,
@@ -509,7 +509,7 @@ export class igApi {
 	 * @param {string} username username target to fetch the stories, also work with private profile if you use cookie \w your account that follows target account
 	 * @returns
 	 */
-	public fetchStories = async (username: username): Promise<{ newSession: any, data: IGStoriesMetadata }> => {
+	public fetchStories = async (username: username): Promise<{ newSession: newSessionType, data: IGStoriesMetadata }> => {
 		const resUsername = await this.getIdByUsername(username) as any;
 		const userID = resUsername.data;
 		const newSess = resUsername.newSession;
@@ -543,7 +543,7 @@ export class igApi {
 	 * @param {username} username
 	 * @returns
 	 */
-	public _getReelsIds = async (username: username): Promise<{ newSession: any, data: ReelsIds[] }> => {
+	public _getReelsIds = async (username: username): Promise<{ newSession: newSessionType, data: ReelsIds[] }> => {
 		const userID: string = await this.getIdByUsername(username).then(res => res.data);
 
 		const highlightIdsQueryParams = highlight_ids_query(userID);
@@ -576,7 +576,7 @@ export class igApi {
 	 * @param {ids} ids of highlight
 	 * @returns
 	 */
-	public _getReels = async (ids: string): Promise<{ newSession: any, data: ReelsMediaData[] }> => {
+	public _getReels = async (ids: string): Promise<{ newSession: newSessionType, data: ReelsMediaData[] }> => {
 		const query = highlight_media_query(ids);
 		const queryString = new URLSearchParams(query).toString();
 	
@@ -609,7 +609,7 @@ export class igApi {
 	 * @param {string} username username target to fetch the highlights, also work with private profile if you use cookie \w your account that follows target account
 	 * @returns
 	 */
-	public fetchHighlights = async (username: username): Promise<{ newSession: any, data: IHighlightsMetadata }> => {
+	public fetchHighlights = async (username: username): Promise<{ newSession: newSessionType, data: IHighlightsMetadata }> => {
 		try {
 			const ids = await this._getReelsIds(username);
 			const reels = await Promise.all(ids.data.map(x => this._getReels(x.highlight_id).then(res => res.data)));
@@ -647,7 +647,7 @@ export class igApi {
 	 * @param end_cursor get end_cursor by fetch user posts first
 	 * @returns
 	 */
-	public fetchUserPosts = async (username: username, end_cursor = ''): Promise<{ newSession: any, data: IPaginatedPosts }> => {
+	public fetchUserPosts = async (username: username, end_cursor = ''): Promise<{ newSession: newSessionType, data: IPaginatedPosts }> => {
 		const userId = await this.getIdByUsername(username).then(res => res.data);
 		const queryParams = new URLSearchParams({
 			query_id: '17880160963012870',
@@ -678,7 +678,7 @@ export class igApi {
 	 * @returns
 	 */
 
-	public fetchUserPostsV2 = async (username: username, end_cursor = ''): Promise<{ newSession: any, data: IPaginatedPosts }> => {
+	public fetchUserPostsV2 = async (username: username, end_cursor = ''): Promise<{ newSession: newSessionType, data: IPaginatedPosts }> => {
 		const userId = await this.getIdByUsername(username);
 		const params = {
 			query_hash: '69cba40317214236af40e7efa697781d',
@@ -773,7 +773,7 @@ export class igApi {
 	 * @param options
 	 * @returns
 	 */
-	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<{ newSession: any, data: PostFeedResult | PostStoryResult }> => {
+	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<{ newSession: newSessionType, data: PostFeedResult | PostStoryResult }> => {
 		if (!this.IgCookie) throw new Error('set cookie first to use this function');
 		try {
 			const dateObj = new Date();
@@ -840,7 +840,7 @@ export class igApi {
 	*
 	* @param photo input must be filepath or buffer
 	*/
-	public changeProfilePicture = async (photo: string | Buffer): Promise<{ newSession: any; data: IChangedProfilePicture; }> => {
+	public changeProfilePicture = async (photo: string | Buffer): Promise<{ newSession: newSessionType; data: IChangedProfilePicture; }> => {
 		const media = Buffer.isBuffer(photo) ? bufferToStream(photo) : fs.createReadStream(photo);
 
 		const form = new FormData();

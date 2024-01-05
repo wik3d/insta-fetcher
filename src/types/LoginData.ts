@@ -1,3 +1,4 @@
+import { AxiosResponse } from 'axios';
 import { IgCookie } from '.';
 
 export interface LoginData {
@@ -78,4 +79,14 @@ export interface proxyType {
 export interface authType {
     user: string;
     pass: string;
+}
+
+export interface newSessionType {
+    status: boolean;
+    cookies?: string;
+}
+
+export interface MainResponse {
+    newSession: newSessionType;
+    response: AxiosResponse | undefined
 }
