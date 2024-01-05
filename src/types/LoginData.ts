@@ -1,4 +1,4 @@
-import { IgCookie } from ".";
+import { IgCookie } from '.';
 
 export interface LoginData {
     cookie: IgCookie
@@ -66,4 +66,16 @@ export interface Nametag {
     gradient: number;
     emoji: string;
     selfie_sticker: number;
+}
+
+export interface proxyType {
+    protocol: string;
+    host: string;
+    port: number;
+    auth?: { username: string, password: string };
+}
+
+export interface authType {
+    user: string;
+    pass: string;
 }

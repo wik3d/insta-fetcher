@@ -25,8 +25,8 @@ import { MediaConfigureOptions } from './types/MediaConfigureOptions';
 import { GraphqlUser, UserGraphQLV2 } from './types/UserGraphQlV2';
 import { IPaginatedPosts } from './types/PaginatedPosts';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-
-type proxyType = { protocol: string, host: string, port: number, auth?: { username: string, password: string } };
+import { getCookie } from './helper/Session';
+import { proxyType, authType } from './types/LoginData';
 
 export * from './utils';
 export * as InstagramMetadata from './types';
@@ -41,9 +41,13 @@ export class igApi {
 	 * @param storeCookie
 	 * @param fetchOptions
 	 */
-	constructor(private IgCookie: IgCookie = '', public storeCookie: boolean = true, public fetchOptions = {}, public proxy: proxyType) {
+	constructor(private IgCookie: IgCookie = '', public storeCookie: boolean = true, public fetchOptions = {}, public proxy: proxyType, public auth?: authType) {
 		this.IgCookie = IgCookie;
 		this.fetchOptions = fetchOptions;
+
+		if (auth?.user) {
+			this.auth = { user: auth.user, pass: auth.pass };
+		}
 
 		if (this.storeCookie) {
 			this.setCookie(this.IgCookie);
@@ -86,17 +90,14 @@ export class igApi {
 	 * @param agent
 	 * @param AxiosOptions
 	 */
-	private FetchIGAPI = (
+	private FetchIGAPI = async (
 		baseURL: string,
 		url = '',
-		agent: string = config.android,
+		agent = 'config.android',
 		fetchOptions: AxiosRequestConfig = {},
-	): Promise<AxiosResponse> | undefined => {
-		// eslint-disable-next-line no-useless-catch
+	): Promise<{ newSession: any, response: AxiosResponse | undefined }> => {
 		try {
-			const headers = fetchOptions.headers
-				? fetchOptions.headers
-				: this.buildHeaders(agent);
+			const headers = fetchOptions.headers || this.buildHeaders(agent);
 
 			const options: AxiosRequestConfig = {
 				method: fetchOptions.method || 'GET',
@@ -106,16 +107,50 @@ export class igApi {
 			if (this.proxyAgent) {
 				options.httpsAgent = this.proxyAgent;
 			}
-			
+	
 			this.options = options;
+	
+			const res: { newSession: any, response: AxiosResponse } = await axios(`${baseURL}${url}`, options)
+				.then((res) => ({
+					newSession: { status: false },
+					response: res,
+				}))
+				.catch(async (error) => {
+					if (error.response && error.response.status === 401 && this.auth) {
+						console.log('getting new session cookie...');
+						const data = await this.getNewSession(this.auth);
+	
+						if (data.status === true) {
+							const newHeaders = fetchOptions.headers || this.buildHeaders(agent);
+							options.headers = newHeaders;
+	
+							const newRes = await axios(`${baseURL}${url}`, options);
+							return {
+								newSession: data,
+								response: newRes,
+							};
+						}
+						else {
+							return error;
+						}
+					}
+					else {
+						throw error;
+					}
+				});
 
-			return axios(`${baseURL}${url}`, options);
-
+			return {
+				newSession: res.newSession,
+				response: res.response,
+			};
+	
 		}
-		catch (error) {
-			throw error;
+		catch(e) {
+			console.log(e);
+			return { newSession: false, response: undefined };
 		}
 	};
+	
 
 	/**
 	 * Set cookie for most all IG Request
@@ -135,36 +170,66 @@ export class igApi {
 		}
 	};
 
+	private getNewSession = async (creds: authType) => {
+		try {
+			const newCookie = await getCookie(creds.user, creds.pass) as string;
+			this.IgCookie = newCookie;
+			return {
+				status: true,
+				cookies: newCookie,
+
+			};
+		}
+		catch(e) {
+			console.error('Invalid login provided', e);
+			return {
+				status: false,
+			};
+		}
+	};
+
 	/**
 	 * get user id by username
 	 * @param {username} username
 	 * @returns
 	 */
-	public getIdByUsername = async (username: username): Promise<string> => {
+	public getIdByUsername = async (username: username): Promise<{ newSession: any, data: string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/${username}/?__a=1&__d=dis`,
 			config.iPhone,
-		)?.then(res => res.data);
-		return res?.graphql.user.id || res;
+		);
+
+		return {
+			newSession: res.newSession,
+			data: res?.response?.data.graphql.user.id || res,
+		};
 	};
 
-	public searchFollower = async (userId: userId, seachTerm: seachTerm): Promise<string> => {
+	public searchFollower = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: any, data: string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/followers/?count=12&query=${seachTerm}&search_surface=follow_list_page`,
 			config.iPhone,
-		)?.then(res => res.data);
-		return res;
+		);
+
+		return {
+			newSession: res.newSession,
+			data: res.response?.data,
+		};
 	};
 
-	public searchFollowing = async (userId: userId, seachTerm: seachTerm): Promise<string> => {
+	public searchFollowing = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: any, data: string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/following/?query=${seachTerm}`,
 			config.iPhone,
-		)?.then(res => res.data);
-		return res;
+		);
+
+		return {
+			newSession: res.newSession,
+			data: res.response?.data,
+		};
 	};
 
 	private _formatSidecar = (data: IRawBody): Array<MediaUrls> => {
@@ -219,7 +284,7 @@ export class igApi {
 		return urls;
 	};
 
-	public fetchPost = async (url: url): Promise<IPostModels> => {
+	public fetchPost = async (url: url): Promise<{ newSession: any, data: IPostModels }> => {
 		const post = shortcodeFormatter(url);
 
 		// const req = (await IGFetchDesktop.get(`/${post.type}/${post.shortcode}/?__a=1`))
@@ -228,7 +293,10 @@ export class igApi {
 			`/${post.type}/${post.shortcode}/?__a=1&__d=dis`,
 			config.desktop,
 		)?.then(res => {
-			return res.data;
+			return {
+				newSession: res.newSession,
+				data: res.response?.data,
+			};
 		}).catch(error => {
 			console.log(error);
 			if (error.request._isRedirect) {
@@ -239,22 +307,25 @@ export class igApi {
 			}
 		});
 
-		const metadata: IRawBody = response;
+		const metadata: IRawBody = response?.data;
 		const item = metadata.items[0];
 		return {
-			username: item.user.username,
-			name: item.user.full_name,
-			postType: getPostType(item.product_type),
-			media_id: item.id,
-			shortcode: item.code,
-			taken_at_timestamp: item.taken_at,
-			likes: item.like_count,
-			caption: item.caption?.text || null,
-			media_count: item.product_type == ProductType.CAROUSEL ? item.carousel_media_count : 1,
-			comment_count: item.comment_count,
-			video_duration: item?.video_duration || null,
-			music: item?.clips_metadata || null,
-			links: this._formatSidecar(metadata),
+			newSession: (response as any).newSession,
+			data: {
+				username: item.user.username,
+				name: item.user.full_name,
+				postType: getPostType(item.product_type),
+				media_id: item.id,
+				shortcode: item.code,
+				taken_at_timestamp: item.taken_at,
+				likes: item.like_count,
+				caption: item.caption?.text || null,
+				media_count: item.product_type == ProductType.CAROUSEL ? item.carousel_media_count : 1,
+				comment_count: item.comment_count,
+				video_duration: item?.video_duration || null,
+				music: item?.clips_metadata || null,
+				links: this._formatSidecar(metadata),
+			},
 		};
 	};
 
@@ -265,8 +336,11 @@ export class igApi {
 			const res = await this.FetchIGAPI(
 				config.instagram_api_v1,
 				`/media/${mediaId.toString()}/info/`,
-			)?.then(res => res.data);
-			return res;
+			);
+			return {
+				newSession: res.newSession,
+				data: res.response?.data,
+			};
 		}
 		catch (error) {
 			throw error;
@@ -278,14 +352,18 @@ export class igApi {
 	 */
 	public accountInfo = async (
 		userID: string = this.accountUserId,
-	): Promise<UserGraphQL> => {
+	): Promise<object> => {
 		try {
 			const res = await this.FetchIGAPI(
 				config.instagram_api_v1,
 				`/users/${userID}/info/`,
-			)?.then(res => res.data);
-			const graphql: UserGraphQL = res;
-			return graphql;
+			);
+
+			const graphql: UserGraphQL = res.response?.data;
+			return {
+				newSession: res.newSession,
+				data: graphql,
+			};
 		}
 		catch (error) {
 			throw error;
@@ -303,14 +381,20 @@ export class igApi {
 		const res = await this.FetchIGAPI(
 			config.instagram_api_v1,
 			`/users/${userID}/info/`,
-		)?.then(res => res.data);
-		const graphql: UserGraphQL = res;
+		);
+
+		const obj: any = {
+			newSession: res.newSession,
+		};
+
+		const graphql: UserGraphQL = res.response?.data;
 		const isSet: boolean = typeof graphql.user.full_name !== 'undefined';
 		if (!simplifiedMetadata) {
-			return graphql as UserGraphQL;
+			obj.data = graphql;
+			return obj;
 		}
 		else {
-			return {
+			obj.data = {
 				id: graphql.user.pk,
 				username: graphql.user.username,
 				fullname: graphql.user.full_name,
@@ -331,6 +415,8 @@ export class igApi {
 				public_email: graphql.user.public_email,
 				account_type: graphql.user.account_type,
 			} as IGUserMetadata;
+
+			return obj;
 		}
 	};
 
@@ -340,9 +426,13 @@ export class igApi {
 	 * @returns
 	 */
 	public fetchUserV2 = async (username: username) => {
-		const res = await this.FetchIGAPI(config.instagram_base_url, `/${username}/?__a=1&__d=dis`)?.then(res => res.data);
-		const { graphql }: UserGraphQLV2 = res;
-		return graphql.user as GraphqlUser;
+		const res = await this.FetchIGAPI(config.instagram_base_url, `/${username}/?__a=1&__d=dis`);
+		// eslint-disable-next-line no-unsafe-optional-chaining
+		const { graphql }: UserGraphQLV2 = res?.response?.data;
+		return {
+			newSession: res.newSession,
+			data: graphql,
+		};
 	};
 
 	/**
@@ -407,14 +497,15 @@ export class igApi {
 	 * @param {string} username username target to fetch the stories, also work with private profile if you use cookie \w your account that follows target account
 	 * @returns
 	 */
-	public fetchStories = async (username: username): Promise<IGStoriesMetadata> => {
+	public fetchStories = async (username: username): Promise<{ newSession: any, data: IGStoriesMetadata }> => {
 		const userID = await this.getIdByUsername(username);
 		const res = await this.FetchIGAPI(
 			config.instagram_api_v1,
 			`/feed/user/${userID}/reel_media/`,
 			config.iPhone,
-		)?.then(res => res.data);
-		const graphql: StoriesGraphQL = res;
+		);
+		
+		const graphql: StoriesGraphQL = res.response?.data;
 		const isFollowing = typeof graphql.user?.friendship_status !== 'undefined';
 
 		if (!isFollowing && graphql.user.is_private) {
@@ -422,10 +513,13 @@ export class igApi {
 		}
 		else {
 			return {
-				username: graphql.user.username,
-				stories_count: graphql.media_count,
-				stories: graphql.items.length == 0 ? null : this._parseStories(graphql),
-				graphql,
+				newSession: res.newSession,
+				data: {
+					username: graphql.user.username,
+					stories_count: graphql.media_count,
+					stories: graphql.items.length == 0 ? null : this._parseStories(graphql),
+					graphql,
+				},
 			};
 		}
 	};
@@ -436,7 +530,7 @@ export class igApi {
 	 * @returns
 	 */
 	public _getReelsIds = async (username: username): Promise<ReelsIds[]> => {
-		const userID: string = await this.getIdByUsername(username);
+		const userID: string = await this.getIdByUsername(username).then(res => res.data);
 
 		const highlightIdsQueryParams = highlight_ids_query(userID);
 		const queryParams = new URLSearchParams(highlightIdsQueryParams);
