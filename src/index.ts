@@ -319,8 +319,6 @@ export class igApi {
 			}
 		});
 
-		console.log(res);
-
 		const metadata: IRawBody = (res as any)?.response?.data;
 		const item = metadata.items[0];
 		return {
@@ -512,13 +510,14 @@ export class igApi {
 	 * @returns
 	 */
 	public fetchStories = async (username: username): Promise<{ newSession: any, data: IGStoriesMetadata }> => {
-		const userID = await this.getIdByUsername(username);
+		let userID = await this.getIdByUsername(username) as any;
+		userID = userID.data;
 		const res = await this.FetchIGAPI(
 			config.instagram_api_v1,
 			`/feed/user/${userID}/reel_media/`,
 			config.iPhone,
 		);
-		
+
 		const graphql: StoriesGraphQL = res.response?.data;
 		const isFollowing = typeof graphql.user?.friendship_status !== 'undefined';
 
