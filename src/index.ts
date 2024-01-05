@@ -510,8 +510,9 @@ export class igApi {
 	 * @returns
 	 */
 	public fetchStories = async (username: username): Promise<{ newSession: any, data: IGStoriesMetadata }> => {
-		let userID = await this.getIdByUsername(username) as any;
-		userID = userID.data;
+		const resUsername = await this.getIdByUsername(username) as any;
+		const userID = resUsername.data;
+		const newSess = resUsername.newSession;
 		const res = await this.FetchIGAPI(
 			config.instagram_api_v1,
 			`/feed/user/${userID}/reel_media/`,
@@ -526,7 +527,7 @@ export class igApi {
 		}
 		else {
 			return {
-				newSession: res.newSession,
+				newSession: newSess,
 				data: {
 					username: graphql.user.username,
 					stories_count: graphql.media_count,
