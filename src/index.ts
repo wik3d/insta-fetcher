@@ -428,7 +428,7 @@ export class igApi {
 	public fetchUserV2 = async (username: username) => {
 		const res = await this.FetchIGAPI(config.instagram_base_url, `/${username}/?__a=1&__d=dis`);
 		// eslint-disable-next-line no-unsafe-optional-chaining
-		const { graphql }: UserGraphQLV2 = res?.response?.data;
+		const graphql: GraphqlUser = res?.response?.data;
 		return {
 			newSession: res.newSession,
 			data: graphql,
@@ -441,7 +441,7 @@ export class igApi {
 	 * @returns true if user is follow me
 	 */
 	public isFollowMe = async (username: username): Promise<boolean> => {
-		const user = await this.fetchUserV2(username);
+		const user = await this.fetchUserV2(username).then(res => res.data);
 		return user.follows_viewer;
 	};
 
@@ -529,7 +529,7 @@ export class igApi {
 	 * @param {username} username
 	 * @returns
 	 */
-	public _getReelsIds = async (username: username): Promise<ReelsIds[]> => {
+	public _getReelsIds = async (username: username): Promise<{ newSession: any, data: ReelsIds[] }> => {
 		const userID: string = await this.getIdByUsername(username).then(res => res.data);
 
 		const highlightIdsQueryParams = highlight_ids_query(userID);
@@ -540,8 +540,9 @@ export class igApi {
 			config.instagram_base_url,
 			'/graphql/query/?' + queryString,
 			config.iPhone,
-		)?.then(res => res.data);
-		const graphql: HightlighGraphQL = res;
+		);
+
+		const graphql: HightlighGraphQL = res.response?.data;
 		const items: ReelsIds[] | PromiseLike<ReelsIds[]> = [];
 		graphql.data.user.edge_highlight_reels.edges.map((edge) => {
 			items.push({
@@ -550,7 +551,10 @@ export class igApi {
 				title: edge.node.title,
 			});
 		});
-		return items;
+		return {
+			newSession: res.newSession,
+			data: items,
+		};
 	};
 
 	/**
@@ -558,7 +562,7 @@ export class igApi {
 	 * @param {ids} ids of highlight
 	 * @returns
 	 */
-	public _getReels = async (ids: string): Promise<ReelsMediaData[]> => {
+	public _getReels = async (ids: string): Promise<{ newSession: any, data: ReelsMediaData[] }> => {
 		const query = highlight_media_query(ids);
 		const queryString = new URLSearchParams(query).toString();
 	
@@ -568,8 +572,9 @@ export class igApi {
 			url,
 			'',
 			config.iPhone,
-		)?.then(res => res.data);
-		const graphql: HMedia = res;
+		);
+		
+		const graphql: HMedia = res.response?.data;
 		const result: ReelsMediaData[] = graphql.data.reels_media[0].items.map((item) => ({
 			media_id: item.id,
 			mimetype: item.is_video ? 'video/mp4' || 'video/gif' : 'image/jpeg',
@@ -579,7 +584,10 @@ export class igApi {
 			dimensions: item.dimensions,
 		}));
 
-		return result;
+		return {
+			newSession: res.newSession,
+			data: result,
+		};
 	};
 
 	/**
@@ -587,28 +595,31 @@ export class igApi {
 	 * @param {string} username username target to fetch the highlights, also work with private profile if you use cookie \w your account that follows target account
 	 * @returns
 	 */
-	public fetchHighlights = async (username: username): Promise<IHighlightsMetadata> => {
+	public fetchHighlights = async (username: username): Promise<{ newSession: any, data: IHighlightsMetadata }> => {
 		try {
 			const ids = await this._getReelsIds(username);
-			const reels = await Promise.all(ids.map(x => this._getReels(x.highlight_id)));
+			const reels = await Promise.all(ids.data.map(x => this._getReels(x.highlight_id).then(res => res.data)));
 
 			const data: IReelsMetadata[] = [];
 			for (let i = 0; i < reels.length; i++) {
 				data.push({
-					title: ids[i].title,
-					cover: ids[i].cover,
+					title: ids.data[i].title,
+					cover: ids.data[i].cover,
 					media_count: reels[i].length,
-					highlights_id: ids[i].highlight_id,
+					highlights_id: ids.data[i].highlight_id,
 					highlights: reels[i],
 				});
 			}
 			const json: IHighlightsMetadata = {
 				username,
-				highlights_count: ids.length,
+				highlights_count: ids.data.length,
 				data: data,
 			};
 
-			return json;
+			return {
+				newSession: ids.newSession,
+				data: json,
+			};
 		}
 		catch (error) {
 			throw error;
@@ -622,8 +633,8 @@ export class igApi {
 	 * @param end_cursor get end_cursor by fetch user posts first
 	 * @returns
 	 */
-	public fetchUserPosts = async (username: username, end_cursor = ''): Promise<IPaginatedPosts> => {
-		const userId = await this.getIdByUsername(username);
+	public fetchUserPosts = async (username: username, end_cursor = ''): Promise<{ newSession: any, data: IPaginatedPosts }> => {
+		const userId = await this.getIdByUsername(username).then(res => res.data);
 		const queryParams = new URLSearchParams({
 			query_id: '17880160963012870',
 			id: userId,
@@ -637,9 +648,13 @@ export class igApi {
 			url,
 			'',
 			config.android,
-		)?.then(res => res.data);
-	
-		return res?.data.user.edge_owner_to_timeline_media;
+		);
+
+		return {
+			newSession: res.newSession,
+			data: res?.response?.data?.user.edge_owner_to_timeline_media,
+		};
+
 	};
 
 	/**
@@ -649,7 +664,7 @@ export class igApi {
 	 * @returns
 	 */
 
-	public fetchUserPostsV2 = async (username: username, end_cursor = ''): Promise<IPaginatedPosts> => {
+	public fetchUserPostsV2 = async (username: username, end_cursor = ''): Promise<{ newSession: any, data: IPaginatedPosts }> => {
 		const userId = await this.getIdByUsername(username);
 		const params = {
 			query_hash: '69cba40317214236af40e7efa697781d',
@@ -667,9 +682,12 @@ export class igApi {
 			url,
 			'',
 			config.android,
-		)?.then(res => res.data);
-			
-		return res?.data.user.edge_owner_to_timeline_media;
+		);
+
+		return {
+			newSession: res.newSession,
+			data: res?.response?.data.user.edge_owner_to_timeline_media,
+		};
 	};
 
 	private uploadPhoto = async (photo: string | Buffer) => {
@@ -722,7 +740,12 @@ export class igApi {
 				config.android,
 				{ headers: headersPhoto, data: file, method: 'POST' },
 			);
-			return result?.data;
+
+			return {
+				newSession: result.newSession,
+				data: result.response?.data,
+			};
+
 		}
 		catch (error) {
 			throw error;
@@ -736,7 +759,7 @@ export class igApi {
 	 * @param options
 	 * @returns
 	 */
-	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<PostFeedResult | PostStoryResult> => {
+	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<{ newSession: any, data: PostFeedResult | PostStoryResult }> => {
 		if (!this.IgCookie) throw new Error('set cookie first to use this function');
 		try {
 			const dateObj = new Date();
@@ -749,7 +772,7 @@ export class igApi {
 			const responseUpload = await this.uploadPhoto(photo);
 
 			const payloadForm = {
-				upload_id: responseUpload.upload_id,
+				upload_id: (responseUpload.data as any).upload_id,
 				timezone_offset: offset,
 				date_time_original: now,
 				date_time_digitalized: now,
@@ -788,7 +811,11 @@ export class igApi {
 				{ data: new URLSearchParams(Object.entries(payloadForm)).toString(), method: 'POST', headers: headers },
 			);
 
-			return result?.data;
+			return {
+				newSession: result.newSession,
+				data: result.response?.data,
+			};
+
 		}
 		catch (error) {
 			throw error;
@@ -799,7 +826,7 @@ export class igApi {
 	*
 	* @param photo input must be filepath or buffer
 	*/
-	public changeProfilePicture = async (photo: string | Buffer): Promise<IChangedProfilePicture> => {
+	public changeProfilePicture = async (photo: string | Buffer): Promise<{ newSession: any; data: IChangedProfilePicture; }> => {
 		const media = Buffer.isBuffer(photo) ? bufferToStream(photo) : fs.createReadStream(photo);
 
 		const form = new FormData();
@@ -818,6 +845,9 @@ export class igApi {
 			headers,
 		});
 
-		return result?.data;
+		return {
+			newSession: result.newSession,
+			data: result.response?.data,
+		};
 	};
 }
