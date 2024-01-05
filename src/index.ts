@@ -111,7 +111,22 @@ export class igApi {
 			this.options = options;
 	
 			const res: { newSession: any, response: AxiosResponse } = await axios(`${baseURL}${url}`, options)
-				.then((res) => {
+				.then(async (res) => {
+					if (!res?.data?.items?.length && this.auth) {
+						console.log('getting new session cookie...');
+						const data = await this.getNewSession(this.auth);
+	
+						if (data.status === true) {
+							const newHeaders = fetchOptions.headers || this.buildHeaders(agent);
+							options.headers = newHeaders;
+	
+							const newRes = await axios(`${baseURL}${url}`, options);
+							return {
+								newSession: data,
+								response: newRes,
+							};
+						}
+					}
 					return {
 						newSession: { status: false },
 						response: res,
