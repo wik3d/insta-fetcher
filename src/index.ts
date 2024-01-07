@@ -95,7 +95,7 @@ export class igApi {
 		url = '',
 		agent = 'config.android',
 		fetchOptions: AxiosRequestConfig = {},
-	): Promise<{ newSession: newSessionType, response: AxiosResponse | undefined }> => {
+	): Promise<{ newSession: newSessionType, response: AxiosResponse | string | undefined }> => {
 		try {
 			const headers = fetchOptions.headers || this.buildHeaders(agent);
 
@@ -133,6 +133,12 @@ export class igApi {
 					};
 				})
 				.catch(async (error) => {
+					if (error.response && error.response.status === 400) {
+						return {
+							newSession: { status: false },
+							response: 'Request failed, account has been locked by instagram',
+						};
+					}
 					if (error.response && error.response.status === 401 && this.auth) {
 						console.log('getting new session cookie...');
 						const data = await this.getNewSession(this.auth);
