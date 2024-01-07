@@ -95,7 +95,7 @@ export class igApi {
 		url = '',
 		agent = 'config.android',
 		fetchOptions: AxiosRequestConfig = {},
-	): Promise<{ newSession: newSessionType, response: AxiosResponse | string | undefined }> => {
+	): Promise<{ newSession: newSessionType, response: AxiosResponse | undefined }> => {
 		try {
 			const headers = fetchOptions.headers || this.buildHeaders(agent);
 
@@ -222,18 +222,32 @@ export class igApi {
 			config.iPhone,
 		);
 
+		if (res?.response?.data?.status === 400) {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
+
 		return {
 			newSession: res.newSession,
 			data: res?.response?.data.graphql.user.id || res,
 		};
 	};
 
-	public searchFollower = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: newSessionType, data: string }> => {
+	public searchFollower = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: newSessionType, data: AxiosResponse | string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/followers/?count=12&query=${seachTerm}&search_surface=follow_list_page`,
 			config.iPhone,
 		);
+
+		if (res?.response?.data?.status === 400) {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
 
 		return {
 			newSession: res.newSession,
@@ -241,12 +255,19 @@ export class igApi {
 		};
 	};
 
-	public searchFollowing = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: newSessionType, data: string }> => {
+	public searchFollowing = async (userId: userId, seachTerm: seachTerm): Promise<{ newSession: newSessionType, data: AxiosResponse | string }> => {
 		const res = await this.FetchIGAPI(
 			config.instagram_base_url,
 			`/api/v1/friendships/${userId}/following/?query=${seachTerm}`,
 			config.iPhone,
 		);
+
+		if (res?.response?.data?.status === 400) {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
 
 		return {
 			newSession: res.newSession,
@@ -306,7 +327,7 @@ export class igApi {
 		return urls;
 	};
 
-	public fetchPost = async (url: url): Promise<{ newSession: newSessionType, data: IPostModels }> => {
+	public fetchPost = async (url: url): Promise<{ newSession: newSessionType, data: IPostModels | string }> => {
 		const post = shortcodeFormatter(url);
 
 		// const req = (await IGFetchDesktop.get(`/${post.type}/${post.shortcode}/?__a=1`))
@@ -323,6 +344,13 @@ export class igApi {
 				});
 			}
 		});
+
+		if ((res as any)?.response?.data?.status === 400) {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
 
 		const metadata: IRawBody = (res as any)?.response?.data;
 		const item = metadata.items[0];
@@ -348,12 +376,20 @@ export class igApi {
 
 	public fetchPostByMediaId = async (
 		mediaId: string | number,
-	): Promise<{ newSession: newSessionType, data: AxiosResponse }> => {
+	): Promise<{ newSession: newSessionType, data: AxiosResponse | string }> => {
 		try {
 			const res = await this.FetchIGAPI(
 				config.instagram_api_v1,
 				`/media/${mediaId.toString()}/info/`,
 			);
+
+			if (res?.response?.data?.status === 400) {
+				return {
+					newSession: { status: false },
+					data: 'Request failed, account has been locked by instagram',
+				};
+			}
+
 			return {
 				newSession: res.newSession,
 				data: res.response?.data,
@@ -369,12 +405,19 @@ export class igApi {
 	 */
 	public accountInfo = async (
 		userID: string = this.accountUserId,
-	): Promise<object> => {
+	): Promise<{ newSession: newSessionType, data: object | string }> => {
 		try {
 			const res = await this.FetchIGAPI(
 				config.instagram_api_v1,
 				`/users/${userID}/info/`,
 			);
+
+			if (res?.response?.data?.status === 400) {
+				return {
+					newSession: { status: false },
+					data: 'Request failed, account has been locked by instagram',
+				};
+			}
 
 			const graphql: UserGraphQL = res.response?.data;
 			return {
@@ -393,8 +436,16 @@ export class igApi {
 	 * @param {boolean} simplifiedMetadata if set to false, it will return full of json result from api request. default is set to true
 	 * @returns {Promise<IGUserMetadata>}
 	 */
-	public fetchUser = async (username: username, simplifiedMetadata = true): Promise<UserGraphQL | IGUserMetadata> => {
+	public fetchUser = async (username: username, simplifiedMetadata = true): Promise<{ newSession: newSessionType, data: UserGraphQL | IGUserMetadata | string }> => {
 		const userID = await this.getIdByUsername(username);
+
+		if (userID?.data === 'Request failed, account has been locked by instagram') {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
+
 		const res = await this.FetchIGAPI(
 			config.instagram_api_v1,
 			`/users/${userID}/info/`,
@@ -514,8 +565,16 @@ export class igApi {
 	 * @param {string} username username target to fetch the stories, also work with private profile if you use cookie \w your account that follows target account
 	 * @returns
 	 */
-	public fetchStories = async (username: username): Promise<{ newSession: newSessionType, data: IGStoriesMetadata }> => {
+	public fetchStories = async (username: username): Promise<{ newSession: newSessionType, data: IGStoriesMetadata | string }> => {
 		const resUsername = await this.getIdByUsername(username) as any;
+
+		if (resUsername?.data === 'Request failed, account has been locked by instagram') {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
+
 		const userID = resUsername.data;
 		const newSess = resUsername.newSession;
 		const res = await this.FetchIGAPI(
@@ -548,10 +607,17 @@ export class igApi {
 	 * @param {username} username
 	 * @returns
 	 */
-	public _getReelsIds = async (username: username): Promise<{ newSession: newSessionType, data: ReelsIds[] }> => {
-		const userID: string = await this.getIdByUsername(username).then(res => res.data);
+	public _getReelsIds = async (username: username): Promise<{ newSession: newSessionType, data: ReelsIds[] | string }> => {
+		const userID = await this.getIdByUsername(username);
 
-		const highlightIdsQueryParams = highlight_ids_query(userID);
+		if (userID?.data === 'Request failed, account has been locked by instagram') {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
+
+		const highlightIdsQueryParams = highlight_ids_query(userID.data as string);
 		const queryParams = new URLSearchParams(highlightIdsQueryParams);
 		const queryString = queryParams.toString();
 
@@ -581,7 +647,7 @@ export class igApi {
 	 * @param {ids} ids of highlight
 	 * @returns
 	 */
-	public _getReels = async (ids: string): Promise<{ newSession: newSessionType, data: ReelsMediaData[] }> => {
+	public _getReels = async (ids: string): Promise<{ newSession: newSessionType, data: ReelsMediaData[] | string }> => {
 		const query = highlight_media_query(ids);
 		const queryString = new URLSearchParams(query).toString();
 	
@@ -592,6 +658,13 @@ export class igApi {
 			'',
 			config.iPhone,
 		);
+
+		if (res?.response?.data?.status === 400) {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
 		
 		const graphql: HMedia = res.response?.data;
 		const result: ReelsMediaData[] = graphql.data.reels_media[0].items.map((item) => ({
@@ -614,10 +687,20 @@ export class igApi {
 	 * @param {string} username username target to fetch the highlights, also work with private profile if you use cookie \w your account that follows target account
 	 * @returns
 	 */
-	public fetchHighlights = async (username: username): Promise<{ newSession: newSessionType, data: IHighlightsMetadata }> => {
+	public fetchHighlights = async (username: username): Promise<{ newSession: newSessionType, data: IHighlightsMetadata | string }> => {
 		try {
 			const ids = await this._getReelsIds(username);
-			const reels = await Promise.all(ids.data.map(x => this._getReels(x.highlight_id).then(res => res.data)));
+
+			if (ids?.data === 'Request failed, account has been locked by instagram') {
+				return {
+					newSession: { status: false },
+					data: 'Request failed, account has been locked by instagram',
+				};
+			}
+
+			ids.data = ids.data as ReelsIds[];
+
+			const reels = await Promise.all((ids).data.map(x => this._getReels(x.highlight_id).then(res => res.data)));
 
 			const data: IReelsMetadata[] = [];
 			for (let i = 0; i < reels.length; i++) {
@@ -626,7 +709,7 @@ export class igApi {
 					cover: ids.data[i].cover,
 					media_count: reels[i].length,
 					highlights_id: ids.data[i].highlight_id,
-					highlights: reels[i],
+					highlights: reels[i] as ReelsMediaData[],
 				});
 			}
 			const json: IHighlightsMetadata = {
@@ -652,8 +735,16 @@ export class igApi {
 	 * @param end_cursor get end_cursor by fetch user posts first
 	 * @returns
 	 */
-	public fetchUserPosts = async (username: username, end_cursor = ''): Promise<{ newSession: newSessionType, data: IPaginatedPosts }> => {
-		const userId = await this.getIdByUsername(username).then(res => res.data);
+	public fetchUserPosts = async (username: username, end_cursor = ''): Promise<{ newSession: newSessionType, data: IPaginatedPosts | string }> => {
+		const userId = await this.getIdByUsername(username) as any;
+
+		if (userId?.data === 'Request failed, account has been locked by instagram') {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
+
 		const queryParams = new URLSearchParams({
 			query_id: '17880160963012870',
 			id: userId,
@@ -683,8 +774,16 @@ export class igApi {
 	 * @returns
 	 */
 
-	public fetchUserPostsV2 = async (username: username, end_cursor = ''): Promise<{ newSession: newSessionType, data: IPaginatedPosts }> => {
+	public fetchUserPostsV2 = async (username: username, end_cursor = ''): Promise<{ newSession: newSessionType, data: IPaginatedPosts | string }> => {
 		const userId = await this.getIdByUsername(username);
+
+		if (userId?.data === 'Request failed, account has been locked by instagram') {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
+		
 		const params = {
 			query_hash: '69cba40317214236af40e7efa697781d',
 			variables: JSON.stringify({
@@ -778,7 +877,7 @@ export class igApi {
 	 * @param options
 	 * @returns
 	 */
-	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<{ newSession: newSessionType, data: PostFeedResult | PostStoryResult }> => {
+	public addPost = async (photo: string | Buffer, type: 'feed' | 'story' = 'feed', options: MediaConfigureOptions): Promise<{ newSession: newSessionType, data: PostFeedResult | PostStoryResult | string }> => {
 		if (!this.IgCookie) throw new Error('set cookie first to use this function');
 		try {
 			const dateObj = new Date();
@@ -830,6 +929,13 @@ export class igApi {
 				{ data: new URLSearchParams(Object.entries(payloadForm)).toString(), method: 'POST', headers: headers },
 			);
 
+			if (result?.response?.data?.status === 400) {
+				return {
+					newSession: { status: false },
+					data: 'Request failed, account has been locked by instagram',
+				};
+			}
+
 			return {
 				newSession: result.newSession,
 				data: result.response?.data,
@@ -845,7 +951,7 @@ export class igApi {
 	*
 	* @param photo input must be filepath or buffer
 	*/
-	public changeProfilePicture = async (photo: string | Buffer): Promise<{ newSession: newSessionType; data: IChangedProfilePicture; }> => {
+	public changeProfilePicture = async (photo: string | Buffer): Promise<{ newSession: newSessionType; data: IChangedProfilePicture | string; }> => {
 		const media = Buffer.isBuffer(photo) ? bufferToStream(photo) : fs.createReadStream(photo);
 
 		const form = new FormData();
@@ -863,6 +969,13 @@ export class igApi {
 			data: form,
 			headers,
 		});
+
+		if (result?.response?.data?.status === 400) {
+			return {
+				newSession: { status: false },
+				data: 'Request failed, account has been locked by instagram',
+			};
+		}
 
 		return {
 			newSession: result.newSession,
