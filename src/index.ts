@@ -112,7 +112,7 @@ export class igApi {
 	
 			const res: MainResponse = await axios(`${baseURL}${url}`, options)
 				.then(async (res) => {
-					if (!res?.data?.items?.length && !res?.data?.graphql?.user && this.auth) {
+					if (!res?.data?.items?.length && !res?.data?.graphql?.user && !res?.data?.data?.user && this.auth) {
 						console.log('getting new session cookie...');
 						const data = await this.getNewSession(this.auth);
 	
