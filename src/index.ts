@@ -217,8 +217,9 @@ export class igApi {
 	 */
 	public getIdByUsername = async (username: username): Promise<{ newSession: newSessionType, data: string }> => {
 		const res = await this.FetchIGAPI(
-			config.instagram_base_url,
-			`/${username}/?__a=1&__d=dis`,
+			'https://i.instagram.com/api/v1/users/web_profile_info',
+			// `/${username}/?__a=1&__d=dis`,
+			`/?username=${username}`,
 			config.iPhone,
 		);
 
@@ -231,7 +232,7 @@ export class igApi {
 
 		return {
 			newSession: res.newSession,
-			data: res?.response?.data.graphql.user.id || res,
+			data: res?.response?.data?.data?.user?.id || res,
 		};
 	};
 
@@ -584,7 +585,7 @@ export class igApi {
 		);
 
 		const graphql: StoriesGraphQL = res.response?.data;
-		const isFollowing = typeof graphql.user?.friendship_status !== 'undefined';
+		const isFollowing = typeof graphql?.user?.friendship_status !== 'undefined';
 
 		if (!isFollowing && graphql.user.is_private) {
 			throw new Error('Private profile');
