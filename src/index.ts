@@ -216,23 +216,13 @@ export class igApi {
 	 * @returns
 	 */
 	public getIdByUsername = async (username: username): Promise<{ newSession: newSessionType, data: string }> => {
-		const res = await this.FetchIGAPI(
-			'https://i.instagram.com/api/v1/users/web_profile_info',
-			// `/${username}/?__a=1&__d=dis`,
-			`/?username=${username}`,
-			config.iPhone,
-		);
+		const res = await axios(`https://backend.mixerno.space/api/likee/instagramfull/${username}`).catch(e => console.error) as any;
 
-		if (res?.response?.data?.status === 400) {
-			return {
-				newSession: { status: false },
-				data: 'Request failed, account has been locked by instagram',
-			};
-		}
+		if (!res?.data?.user?.id) console.error('ID of user couldn\'t be found');
 
 		return {
-			newSession: res.newSession,
-			data: res?.response?.data?.data?.user?.id || res,
+			newSession: { status: false },
+			data: res?.data?.user?.id || res,
 		};
 	};
 
