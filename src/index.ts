@@ -195,7 +195,7 @@ export class igApi {
 
 	private getNewSession = async (creds: authType) => {
 		try {
-			const newCookie = await getCookie(creds.user, creds.pass) as string;
+			const newCookie = await getCookie(creds.user, creds.pass, this.proxyAgent) as string;
 			this.IgCookie = newCookie;
 			return {
 				status: true,

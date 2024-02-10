@@ -88,7 +88,7 @@ export const getSessionId = async (username: username, password: password): Prom
  * @returns
  */
 // eslint-disable-next-line no-shadow
-export const getCookie = async (username: string, password: string, withLoginData = false) => {
+export const getCookie = async (username: string, password: string, proxy: any, withLoginData = false) => {
 	// eslint-disable-next-line no-useless-catch
 	try {
 		const login_headers = {
@@ -103,6 +103,7 @@ export const getCookie = async (username: string, password: string, withLoginDat
 			'https://i.instagram.com/api/v1/accounts/login/',
 			`username=${username}&password=${encodeURIComponent(password)}&device_id=${randomUUID()}&login_attempt_count=0`, {
 				headers: login_headers,
+				httpsAgent: proxy,
 			});
 		const cookie: IgCookie = formatCookie(res.headers['set-cookie']) || '';
 		const result = res.data;
